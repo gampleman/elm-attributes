@@ -141,7 +141,7 @@ but not all functions support the same set. In this case, you can increase type 
 For instance, imagine that we have a primary and secondary button component, where both can take an `icon` attribute, but the primary button
 can take a `danger` boolean and the secondary can take a color `tint`:
 
-    module Button exposes (Attribute)
+    module Button exposes (Attribute, label, danger, tint, primary, secondary)
 
     import Attr
 
