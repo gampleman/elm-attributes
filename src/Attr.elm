@@ -1,6 +1,7 @@
 module Attr exposing
     ( attr, withAttrs, toAttrs, Attr
     , if_, maybe, batch, filter, none
+    , Supported
     )
 
 {-|
@@ -33,7 +34,7 @@ First, lets define the attributes we will want to use for constructing our modul
         }
 
     type alias Attribute =
-        Attr.Attr Attributes
+        Attr.Attr () Attributes
 
     defaultAttrs : Attributes
     defaultAttrs =
@@ -129,25 +130,94 @@ This is needed due to the opaqueness of the type. Otherwise, the API author woul
 
 @docs if_, maybe, batch, filter, none
 
+
+# Advanced: Phantom types
+
+You might have noticed that `Attr` has two type arguments, but we've only been using the one so far and providing the unit type as the second.
+
+This is the standard easy form of usage. However, sometimes you have a number of functions that take an overlapping set of attributes,
+but not all functions support the same set. In this case, you can increase type safety by using a phantom type technique:
+
+For instance, imagine that we have a primary and secondary button component, where both can take an `icon` attribute, but the primary button
+can take a `danger` boolean and the secondary can take a color `tint`:
+
+    module Button exposes (Attribute)
+
+    import Attr
+
+    type alias Attributes =
+        { tint : Color
+        , danger : Bool
+        , label : String
+        }
+
+    type alias Attribute supported =
+        Attr.Attr supported Attributes
+
+    defaultAttrs : Attributes
+    defaultAttrs =
+        { tint = Color.transparent
+        , danger = False
+        , label = ""
+        }
+
+    label : String -> Attribute { a | label : Attr.Supported }
+    label value =
+        Attr.attr (\attrs -> { attrs | label = value })
+
+    danger : Bool -> Attribute { a | danger : Attr.Supported }
+    danger value =
+        Attr.attr (\attrs -> { attrs | danger = value })
+
+    tint : Color -> Attribute { a | tint : Attr.Supported }
+    tint value =
+        Attr.attr (\attrs -> { attrs | tint = value })
+
+
+    primary : List (Attribute { label : Attr.Supported, danger : Attr.Supported}) -> { title : String } -> Html msg
+    primary =
+        Attr.withAttrs defaultAttrs
+            (\attrs props ->
+                ...
+            )
+
+    secondary : List (Attribute { label : Attr.Supported, tint : Attr.Supported}) -> { title : String } -> Html msg
+    secondary =
+        Attr.withAttrs defaultAttrs
+            (\attrs props ->
+                ...
+            )
+
+The important bit here is that each attribute function uses an **extensible record** to say which attribute it provides,
+whereas the functions consuming the attributes use a full record to list all the options they support.
+
+@docs Supported
+
 -}
 
 -- Builders
 
 
 {-| -}
-type Attr attrs
+type Attr uses attrs
     = Attr (attrs -> attrs)
-    | AttrBatch (List (Attr attrs))
+    | AttrBatch (List (Attr uses attrs))
+
+
+{-| Only use this in type signatures. This type is only to indicate that a particular option is provided/supported by attributes.
+-}
+type Supported
+    = Supported
 
 
 {-| -}
-attr : (attrs -> attrs) -> Attr attrs
+attr : (attrs -> attrs) -> Attr uses attrs
 attr =
     Attr
 
 
 {-| -}
-toAttrs : attrs -> List (Attr attrs) -> attrs
+toAttrs : attrs -> List (Attr uses attrs) -> attrs
 toAttrs =
     List.foldl
         (\attr_ acc ->
@@ -161,7 +231,7 @@ toAttrs =
 
 
 {-| -}
-withAttrs : attrs -> (attrs -> a) -> List (Attr attrs) -> a
+withAttrs : attrs -> (attrs -> a) -> List (Attr uses attrs) -> a
 withAttrs attrs fn attrList =
     fn (toAttrs attrs attrList)
 
@@ -181,7 +251,7 @@ withAttrs attrs fn attrList =
             }
 
 -}
-if_ : Bool -> Attr attrs -> Attr attrs
+if_ : Bool -> Attr uses attrs -> Attr uses attrs
 if_ predicate attr_ =
     if predicate then
         attr_
@@ -202,7 +272,7 @@ if_ predicate attr_ =
             }
 
 -}
-maybe : (a -> Attr attrs) -> Maybe a -> Attr attrs
+maybe : (a -> Attr uses attrs) -> Maybe a -> Attr uses attrs
 maybe toAttr maybeA =
     maybeA
         |> Maybe.map toAttr
@@ -239,7 +309,7 @@ maybe toAttr maybeA =
             }
 
 -}
-batch : List (Attr attrs) -> Attr attrs
+batch : List (Attr uses attrs) -> Attr uses attrs
 batch =
     AttrBatch
 
@@ -258,7 +328,7 @@ batch =
         }
 
 -}
-filter : List ( Attr attrs, Bool ) -> Attr attrs
+filter : List ( Attr uses attrs, Bool ) -> Attr uses attrs
 filter attrList =
     attrList
         |> List.filterMap
@@ -288,6 +358,6 @@ filter attrList =
 You can think of it as the equivalent of `text ""` or `class ""`.
 
 -}
-none : Attr attrs
+none : Attr uses attrs
 none =
     Attr identity
